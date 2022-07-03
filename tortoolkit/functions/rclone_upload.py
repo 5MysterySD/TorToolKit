@@ -46,9 +46,9 @@ async def rclone_upload(path,message,user_msg,dest_drive,dest_base,edit_time,con
     omsg = user_msg
     await task.set_original_message(omsg)
     upload_db.register_upload(omsg.chat_id, omsg.id)
-    data = "upcancel {} {} {}".format(omsg.chat_id,omsg.id,omsg.sender_id)
+    data = f"upcancel {omsg.chat_id} {omsg.id} {omsg.sender_id}"
     buts = [KeyboardButtonCallback("Cancel upload.",data.encode("UTF-8"))]
-    
+
     msg = await message.reply("<b>Uploading to configured drive.... will be updated soon.",parse_mode="html", buttons=buts)
     await task.set_message(msg)
 
@@ -67,7 +67,7 @@ async def rclone_upload(path,message,user_msg,dest_drive,dest_base,edit_time,con
             stdout=subprocess.PIPE
         )
         rcres = await rclone_process_display(rclone_pr,edit_time,msg, message, omsg, task)
-        
+
         if rcres is False:
             await message.edit(message.text + "\nCanceled Rclone Upload")
             await msg.delete()
@@ -75,32 +75,25 @@ async def rclone_upload(path,message,user_msg,dest_drive,dest_base,edit_time,con
             task.cancel = True
             await task.set_inactive("Canceled Rclone Upload")
             return task
-            
+
 
         torlog.info("Upload complete")
         gid = await get_glink(dest_drive,dest_base,os.path.basename(path),conf_path)
         torlog.info(f"Upload folder id :- {gid}")
-        
+
         folder_link = f"https://drive.google.com/folderview?id={gid[0]}"
 
-        buttons = []
-        buttons.append(
-            [KeyboardButtonUrl("Drive URL",folder_link)]
-        )
-        gd_index = get_val("GD_INDEX_URL")
-        if gd_index:
-            index_link = "{}/{}/".format(gd_index.strip("/"), gid[1])
+        buttons = [[KeyboardButtonUrl("Drive URL",folder_link)]]
+        if gd_index := get_val("GD_INDEX_URL"):
+            index_link = f'{gd_index.strip("/")}/{gid[1]}/'
             index_link = requote_uri(index_link)
-            torlog.info("index link "+str(index_link))
+            torlog.info(f"index link {str(index_link)}")
             buttons.append(
                 [KeyboardButtonUrl("Index URL",index_link)]
             )
 
 
-        txtmsg = "<a href='tg://user?id={}'>Done</a>\n#uploads\nUPLOADED FOLDER :-<code>{}</code>\nTo Drive.".format(omsg.sender_id,os.path.basename(path))
-        
-        await omsg.reply(txtmsg,buttons=buttons,parse_mode="html")
-        await msg.delete()
+        txtmsg = f"<a href='tg://user?id={omsg.sender_id}'>Done</a>\n#uploads\nUPLOADED FOLDER :-<code>{os.path.basename(path)}</code>\nTo Drive."
 
 
     else:
@@ -117,7 +110,7 @@ async def rclone_upload(path,message,user_msg,dest_drive,dest_base,edit_time,con
             stdout=subprocess.PIPE
         )
         rcres = await rclone_process_display(rclone_pr,edit_time,msg, message, omsg, task)
-        
+
         if rcres is False:
             await message.edit(message.text + "\nCanceled Rclone Upload")
             await msg.delete()
@@ -130,26 +123,23 @@ async def rclone_upload(path,message,user_msg,dest_drive,dest_base,edit_time,con
         gid = await get_glink(dest_drive,dest_base,os.path.basename(path),conf_path,False)
         torlog.info(f"Upload folder id :- {gid}")
 
-        buttons = []
-
         file_link = f"https://drive.google.com/file/d/{gid[0]}/view"
-        buttons.append(
-            [KeyboardButtonUrl("Drive URL",file_link)]
-        )
-        gd_index = get_val("GD_INDEX_URL")
-        if gd_index:
-            index_link = "{}/{}".format(gd_index.strip("/"), gid[1])
+        buttons = [[KeyboardButtonUrl("Drive URL",file_link)]]
+        if gd_index := get_val("GD_INDEX_URL"):
+            index_link = f'{gd_index.strip("/")}/{gid[1]}'
             index_link = requote_uri(index_link)
-            torlog.info("index link "+str(index_link))
+            torlog.info(f"index link {str(index_link)}")
             buttons.append(
                 [KeyboardButtonUrl("Index URL",index_link)]
             )
 
-        txtmsg = "<a href='tg://user?id={}'>Done</a>\n#uploads\nUPLOADED FILE :-<code>{}</code>\nTo Drive.".format(omsg.sender_id,os.path.basename(path))
+        txtmsg = f"<a href='tg://user?id={omsg.sender_id}'>Done</a>\n#uploads\nUPLOADED FILE :-<code>{os.path.basename(path)}</code>\nTo Drive."
 
-        
-        await omsg.reply(txtmsg,buttons=buttons,parse_mode="html")
-        await msg.delete()
+
+
+    await omsg.reply(txtmsg,buttons=buttons,parse_mode="html")
+    await msg.delete()
+
 
     upload_db.deregister_upload(message.chat_id, message.id)
     await task.set_inactive()
@@ -164,15 +154,14 @@ async def rclone_process_display(process,edit_time,msg, omessage, cancelmsg, tas
         data = process.stdout.readline().decode()
         data = data.strip()
         mat = re.findall("Transferred:.*ETA.*",data)
-        
-        if mat is not None:
-            if len(mat) > 0:
-                sleeps = True
-                if time.time() - start > edit_time:
-                    start = time.time()
-                    
-                    await task.refresh_info(data)
-                    await task.update_message()
+
+        if mat is not None and len(mat) > 0:
+            sleeps = True
+            if time.time() - start > edit_time:
+                start = time.time()
+
+                await task.refresh_info(data)
+                await task.update_message()
 
         if data == "":
             blank += 1
@@ -184,7 +173,7 @@ async def rclone_process_display(process,edit_time,msg, omessage, cancelmsg, tas
         if sleeps:
             if upload_db.get_cancel_status(cancelmsg.chat_id, cancelmsg.id):
                 return False
-            
+
             sleeps=False
             await aio.sleep(2)
             process.stdout.flush()
@@ -196,22 +185,40 @@ async def get_glink(drive_name,drive_base,ent_name,conf_path,isdir=True):
     filter_path = os.path.join(os.getcwd(),str(time.time()).replace(".","")+".txt")
     with open(filter_path,"w",encoding="UTF-8") as file:
         file.write(f"+ {ent_name}\n")
-        file.write(f"- *")
+        file.write("- *")
 
     if isdir:
-        if get_val("RSTUFF"):
-            get_id_cmd = [get_val("RSTUFF"), "lsjson", f'--config={conf_path}', f"{drive_name}:{drive_base}", "--dirs-only", "-f", f"+ {ent_name}/", "-f", "- *"]
-        else:
-            get_id_cmd = ["rclone", "lsjson", f'--config={conf_path}', f"{drive_name}:{drive_base}", "--dirs-only", "-f", f"+ {ent_name}/", "-f", "- *"]
-        #get_id_cmd = ["rclone", "lsjson", f'--config={conf_path}', f"{drive_name}:{drive_base}", "--dirs-only", f"--filter-from={filter_path}"]
+        get_id_cmd = (
+            [
+                get_val("RSTUFF"),
+                "lsjson",
+                f'--config={conf_path}',
+                f"{drive_name}:{drive_base}",
+                "--dirs-only",
+                "-f",
+                f"+ {ent_name}/",
+                "-f",
+                "- *",
+            ]
+            if get_val("RSTUFF")
+            else [
+                "rclone",
+                "lsjson",
+                f'--config={conf_path}',
+                f"{drive_name}:{drive_base}",
+                "--dirs-only",
+                "-f",
+                f"+ {ent_name}/",
+                "-f",
+                "- *",
+            ]
+        )
+
+            #get_id_cmd = ["rclone", "lsjson", f'--config={conf_path}', f"{drive_name}:{drive_base}", "--dirs-only", f"--filter-from={filter_path}"]
+    elif get_val("RSTUFF"):
+        get_id_cmd = [get_val("RSTUFF"), "lsjson", f'--config={conf_path}', f"{drive_name}:{drive_base}", "--files-only", "-f", f"+ {ent_name}", "-f", "- *"]
     else:
-        if get_val("RSTUFF"):
-            get_id_cmd = [get_val("RSTUFF"), "lsjson", f'--config={conf_path}', f"{drive_name}:{drive_base}", "--files-only", "-f", f"+ {ent_name}", "-f", "- *"]
-        else:
-            get_id_cmd = ["rclone", "lsjson", f'--config={conf_path}', f"{drive_name}:{drive_base}", "--files-only", "-f", f"+ {ent_name}", "-f", "- *"]
-        #get_id_cmd = ["rclone", "lsjson", f'--config={conf_path}', f"{drive_name}:{drive_base}", "--files-only", f"--filter-from={filter_path}"]
-
-
+        get_id_cmd = ["rclone", "lsjson", f'--config={conf_path}', f"{drive_name}:{drive_base}", "--files-only", "-f", f"+ {ent_name}", "-f", "- *"]
     # piping only stdout
     process = await aio.create_subprocess_exec(
         *get_id_cmd,
@@ -220,36 +227,40 @@ async def get_glink(drive_name,drive_base,ent_name,conf_path,isdir=True):
 
     stdout, _ = await process.communicate()
     stdout = stdout.decode().strip()
-    
+
     if os.path.exists(filter_path):
         os.remove(filter_path)
-    
+
     try:
         data = json.loads(stdout)
         id = data[0]["ID"]
         name = data[0]["Name"]
         return (id, name)
     except Exception:
-        torlog.error("Error Occured while getting id ::- {} {}".format(traceback.format_exc(), stdout))
+        torlog.error(
+            f"Error Occured while getting id ::- {traceback.format_exc()} {stdout}"
+        )
 
 async def get_config():
     # this car requires to access the blob
 
     config = get_val("RCLONE_CONFIG")
-    if config is not None:
-        if isinstance(config,str):
-            if os.path.exists(config):
-                return config
-    
+    if (
+        config is not None
+        and isinstance(config, str)
+        and os.path.exists(config)
+    ):
+        return config
+
     db = var_db
     _, blob = db.get_variable("RCLONE_CONFIG")
-    
+
     if blob is not None:
         fpath = os.path.join(os.getcwd(),"rclone-config.conf")
         with open(fpath,"wb") as fi:
             fi.write(blob)
         return fpath
-    
+
     return None
 
 # probably hotfix for rclone ban
